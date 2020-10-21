@@ -1,0 +1,8 @@
+version: 0.1.0
+
+description: >
+  Use PATestPA to find, fix and monitor known vulnerabilities in your app dependencies.
+  To use this orb you need to have a registered account with PATestPA and and API token.
+display:
+  source_url: https://github.com/PATestPA/patestpa-orb/
+  home_url: https://patestpa.papa/
