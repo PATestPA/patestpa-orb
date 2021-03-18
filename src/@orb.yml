@@ -1,8 +1,549 @@
-version: 0.1.0
+version: 2.1
 
 description: >
-  Use PATestPA to find, fix and monitor known vulnerabilities in your app dependencies.
+  Use PackageAware to find, fix and monitor known vulnerabilities in your app dependencies.
   To use this orb you need to have a registered account with PATestPA and and API token.
 display:
-  source_url: https://github.com/PATestPA/patestpa-orb/
-  home_url: https://patestpa.papa/
+  source_url: https://github.com/patestpa/patestpa-orb
+  home_url: https://app.packageaware.io/
+
+# If your orb requires other orbs, you can import them like this. Otherwise remove the "orbs" stanza.
+# orbs:
+#  hello: circleci/hello-build@0.0.5
+
+# ***************************
+orbs:
+# ***************************
+  python: circleci/python@1.2.0
+
+# ***************************
+commands:
+# ***************************
+  announce_start:
+    parameters:
+      mode:
+        type: string
+        default: "run_and_wait"
+    steps:
+      - run: echo "BEGIN PACKAGE AWARE << parameters.mode >>"
+      - run: echo "WORKING DIRECTORY $CIRCLE_WORKING_DIRECTORY"
+
+# ***************************
+jobs:
+# ***************************
+
+  # ##########################
+  custom:
+  # ##########################
+
+    description: |
+        Run the Package Aware security analysis in custom mode with full control.
+        Mode parameter will dictate type of analysis:
+        a) run_and_wait: The process will submit manifest files and wait for analysis
+           result before exiting
+        b) async_init: The process will submit manifest files and exit. Requires a
+           subsequent call with mode "async_result" to get analysis result.
+        c) async_result: The process will search for analysis URL file written in
+           async_init process and execute call to URL until analysis results are available.
+    parameters:
+      mode:
+        type: string
+        default: "run_and_wait"
+      on_failure:
+        type: string
+        default: "fail_the_build"
+      directories_to_exclude:
+        type: string
+        default: ""
+      files_to_exclude:
+        type: string
+        default: ""
+      analysis_result_max_wait:
+        type: integer
+        default: 300
+      analysis_result_polling_interval:
+        type: integer
+        default: 10
+      fs_debug:
+        type: boolean
+        default: false
+      project_name:
+        type: string
+        # default: NO DEFAULT SET - REQUIRED
+      base_uri:
+        type: string
+        default: "https://api.packageaware.io/api/"
+      branch_uri:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      build_version:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      operating_environment:
+        type: string
+        default: ""  # When set to "" a default value will be applied by the CLI
+
+    executor:
+      name: python/default
+      tag: "3.8"
+
+    steps:
+    - announce_start:
+        mode: << parameters.mode >>
+
+    - checkout
+
+    - run:
+        command: mkdir -p package_aware/workspace
+        name: Create PackageAware Workspace Folder
+
+    - when:
+        condition: << parameters.fs_debug >>
+        steps:
+          - run: pwd
+          - run: ls -al
+          - run: ls -al package_aware
+
+    - run:
+        command: |
+          cd package_aware/workspace
+          curl -s https://api.github.com/repos/PATestPA/PATestPA/releases/latest | grep "browser_download_url" | cut -d '"' -f 4 | xargs -n 1 curl -LO
+          sha256sum -c packageaware.sha256
+          sha256sum -c pa-requirements.sha256
+          cd ../../
+        name: Get Latest Package Aware Code
+    - run:
+        command: |
+          PA_INTEGRATION_NAME="CircleCI-Orb"
+
+    - python/install-packages:
+        pip-dependency-file: package_aware/workspace/pa-requirements.txt
+        pkg-manager: pip
+
+
+    #- when:
+    #  condition: << parameters.preinstall-foo >>
+    #  steps:
+    #    - run: echo "preinstall"
+    #- analyze
+
+    - run:
+        command: |
+          PA_COMMIT_HASH="${CIRCLE_SHA1}"
+          PA_BRANCH_NAME="${CIRCLE_BRANCH}"
+          PA_BUILD_URI="${CIRCLE_BUILD_URL}"
+          PA_INTEGRATION_NAME="CircleCI-Orb"
+          eval PA_SOURCE_CODE_PATH="$CIRCLE_WORKING_DIRECTORY"
+          eval PA_WORKING_DIRECTORY="$CIRCLE_WORKING_DIRECTORY"
+
+          python ./package_aware/workspace/packageaware.py -m=run_and_wait -of=<< parameters.on_failure >> -dte=<< parameters.directories_to_exclude >> -fte=<< parameters.files_to_exclude >> -wd="$PA_WORKING_DIRECTORY" -armw=<< parameters.analysis_result_max_wait >> -arpi=<< parameters.analysis_result_polling_interval >> -buri=<< parameters.base_uri >> -scp="$PA_SOURCE_CODE_PATH" -pn=<< parameters.project_name >> -ch="$PA_COMMIT_HASH" -bn="$PA_BRANCH_NAME" -bruri=<< parameters.branch_uri >> -bldver=<< parameters.build_version >> -blduri="$PA_BUILD_URI" -oe=<< parameters.operating_environment >> -intn="$PA_INTEGRATION_NAME"
+        name: Execute PackageAware CLI
+
+    - persist_to_workspace:
+        # Must be an absolute path, or relative path from working_directory. This is a directory on the container which is
+        # taken to be the root directory of the workspace.
+        root: package_aware
+        paths:
+          - workspace
+
+  # ##########################
+  analysis_run_and_wait:
+  # ##########################
+
+    description: |
+        Run the Package Aware security analysis in run_and_wait mode with full control.
+    parameters:
+      on_failure:
+        type: string
+        default: "fail_the_build"
+      directories_to_exclude:
+        type: string
+        default: ""
+      files_to_exclude:
+        type: string
+        default: ""
+      analysis_result_max_wait:
+        type: integer
+        default: 300
+      analysis_result_polling_interval:
+        type: integer
+        default: 10
+      fs_debug:
+        type: boolean
+        default: false
+      project_name:
+        type: string
+        # default: NO DEFAULT SET - REQUIRED
+      base_uri:
+        type: string
+        default: "https://api.packageaware.io/api/"
+      branch_uri:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      build_version:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      operating_environment:
+        type: string
+        default: ""  # When set to "" a default value will be applied by the CLI
+    executor:
+      name: python/default
+      tag: "3.8"
+
+    steps:
+    - announce_start:
+        mode: "run_and_wait"
+
+    - checkout
+
+    - run:
+        command: mkdir -p package_aware/workspace
+        name: Create PackageAware Workspace Folder
+
+    - run:
+        command: |
+          cd package_aware/workspace
+          curl -s https://api.github.com/repos/PATestPA/PATestPA/releases/latest | grep "browser_download_url" | cut -d '"' -f 4 | xargs -n 1 curl -LO
+          sha256sum -c packageaware.sha256
+          sha256sum -c pa-requirements.sha256
+          cd ../../
+        name: Get Latest Package Aware Code
+
+    #- python/install-packages:
+    #    pkg-manager: pip
+    - python/install-packages:
+        pip-dependency-file: package_aware/workspace/pa-requirements.txt
+        pkg-manager: pip
+
+    - when:
+        condition: << parameters.fs_debug >>
+        steps:
+          - run: pwd
+          - run: ls -al
+          - run: ls -al package_aware
+
+    - run:
+        command: |
+          PA_COMMIT_HASH="${CIRCLE_SHA1}"
+          PA_BRANCH_NAME="${CIRCLE_BRANCH}"
+          PA_BUILD_URI="${CIRCLE_BUILD_URL}"
+          PA_INTEGRATION_NAME="CircleCI-Orb"
+          eval PA_SOURCE_CODE_PATH="$CIRCLE_WORKING_DIRECTORY"
+          eval PA_WORKING_DIRECTORY="$CIRCLE_WORKING_DIRECTORY"
+          python ./package_aware/workspace/packageaware.py -m="run_and_wait" -of=<< parameters.on_failure >> -dte=<< parameters.directories_to_exclude >> -fte=<< parameters.files_to_exclude >> -wd="$PA_WORKING_DIRECTORY" -armw=<< parameters.analysis_result_max_wait >> -arpi=<< parameters.analysis_result_polling_interval >> -buri=<< parameters.base_uri >> -scp="$PA_SOURCE_CODE_PATH" -pn=<< parameters.project_name >> -ch="$PA_COMMIT_HASH" -bn="$PA_BRANCH_NAME" -bruri=<< parameters.branch_uri >> -bldver=<< parameters.build_version >> -blduri="$PA_BUILD_URI" -oe=<< parameters.operating_environment >> -intn="$PA_INTEGRATION_NAME"
+        name: Execute PackageAware CLI
+
+    - persist_to_workspace:
+        # Must be an absolute path, or relative path from working_directory. This is a directory on the container which is
+        # taken to be the root directory of the workspace.
+        root: package_aware
+        paths:
+          - workspace
+
+  # ##########################
+  analysis_async_init:
+  # ##########################
+    description: |
+        Run the Package Aware security analysis in async_init mode with full control.
+    parameters:
+      on_failure:
+        type: string
+        default: "fail_the_build"
+      directories_to_exclude:
+        type: string
+        default: ""
+      files_to_exclude:
+        type: string
+        default: ""
+      analysis_result_max_wait:
+        type: integer
+        default: 300
+      analysis_result_polling_interval:
+        type: integer
+        default: 10
+      fs_debug:
+        type: boolean
+        default: false
+      project_name:
+        type: string
+        # default: NO DEFAULT SET - REQUIRED
+      base_uri:
+        type: string
+        default: "https://api.packageaware.io/api/"
+      branch_uri:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      build_version:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      operating_environment:
+        type: string
+        default: ""  # When set to "" a default value will be applied by the CLI
+
+    executor:
+      name: python/default
+      tag: "3.8"
+
+    steps:
+    - announce_start:
+        mode: "async_init"
+
+    - checkout
+
+    - run:
+        command: mkdir -p package_aware/workspace
+        name: Create PackageAware Workspace Folder
+
+    - run:
+        command: |
+          cd package_aware/workspace
+          curl -s https://api.github.com/repos/PATestPA/PATestPA/releases/latest | grep "browser_download_url" | cut -d '"' -f 4 | xargs -n 1 curl -LO
+          sha256sum -c packageaware.sha256
+          sha256sum -c pa-requirements.sha256
+          cd ../../
+        name: Get Latest Package Aware Code
+
+    - when:
+        condition: << parameters.fs_debug >>
+        steps:
+          - run: pwd
+          - run: ls -al
+          - run: ls -al package_aware
+
+    - python/install-packages:
+        pip-dependency-file: package_aware/workspace/pa-requirements.txt
+        pkg-manager: pip
+
+    - run:
+        command: |
+          PA_COMMIT_HASH="${CIRCLE_SHA1}"
+          PA_BRANCH_NAME="${CIRCLE_BRANCH}"
+          PA_BUILD_URI="${CIRCLE_BUILD_URL}"
+          PA_INTEGRATION_NAME="CircleCI-Orb"
+          eval PA_SOURCE_CODE_PATH="$CIRCLE_WORKING_DIRECTORY"
+          eval PA_WORKING_DIRECTORY="$CIRCLE_WORKING_DIRECTORY"
+          python ./package_aware/workspace/packageaware.py -m="async_init" -of=<< parameters.on_failure >> -dte=<< parameters.directories_to_exclude >> -fte=<< parameters.files_to_exclude >> -wd="$PA_WORKING_DIRECTORY" -armw=<< parameters.analysis_result_max_wait >> -arpi=<< parameters.analysis_result_polling_interval >> -buri=<< parameters.base_uri >> -scp="$PA_SOURCE_CODE_PATH" -pn=<< parameters.project_name >> -ch="$PA_COMMIT_HASH" -bn="$PA_BRANCH_NAME" -bruri=<< parameters.branch_uri >> -bldver=<< parameters.build_version >> -blduri="$PA_BUILD_URI" -oe=<< parameters.operating_environment >> -intn="$PA_INTEGRATION_NAME"
+        name: Execute PackageAware CLI
+
+    - persist_to_workspace:
+        # Must be an absolute path, or relative path from working_directory. This is a directory on the container which is
+        # taken to be the root directory of the workspace.
+        root: package_aware
+        paths:
+          - workspace
+
+
+  # ##########################
+  analysis_async_result:
+  # ##########################
+    description: |
+        Run the Package Aware security analysis in asyn_result mode with full control.
+    parameters:
+      on_failure:
+        type: string
+        default: "fail_the_build"
+      directories_to_exclude:
+        type: string
+        default: ""
+      files_to_exclude:
+        type: string
+        default: ""
+      analysis_result_max_wait:
+        type: integer
+        default: 300
+      analysis_result_polling_interval:
+        type: integer
+        default: 10
+      fs_debug:
+        type: boolean
+        default: false
+      project_name:
+        type: string
+        # default: NO DEFAULT SET - REQUIRED
+      base_uri:
+        type: string
+        default: "https://api.packageaware.io/api/"
+      branch_uri:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      build_version:
+        type: string
+        default: ""  # When set to "" no default will be applied by the CLI
+      operating_environment:
+        type: string
+        default: ""  # When set to "" a default value will be applied by the CLI
+
+    executor:
+      name: python/default
+      tag: "3.8"
+
+    steps:
+    - announce_start:
+        mode: "async_result"
+
+    - checkout
+
+    - attach_workspace:
+        # Must be absolute path or relative path from working_directory
+        at: package_aware
+
+    - when:
+        condition: << parameters.fs_debug >>
+        steps:
+          - run: pwd
+          - run: ls -al
+          - run: ls -al package_aware
+
+    - python/install-packages:
+        pip-dependency-file: package_aware/workspace/pa-requirements.txt
+        pkg-manager: pip
+
+    - when:
+        condition: << parameters.fs_debug >>
+        steps:
+          - run: ls -al package_aware
+          - run: ls -al package_aware/workspace
+
+    - run:
+        command: |
+          PA_COMMIT_HASH="${CIRCLE_SHA1}"
+          PA_BRANCH_NAME="${CIRCLE_BRANCH}"
+          PA_BUILD_URI="${CIRCLE_BUILD_URL}"
+          PA_INTEGRATION_NAME="CircleCI-Orb"
+          eval PA_SOURCE_CODE_PATH="$CIRCLE_WORKING_DIRECTORY"
+          eval PA_WORKING_DIRECTORY="$CIRCLE_WORKING_DIRECTORY"
+          python ./package_aware/workspace/packageaware.py -m="async_result" -of=<< parameters.on_failure >> -dte=<< parameters.directories_to_exclude >> -fte=<< parameters.files_to_exclude >> -wd="$PA_WORKING_DIRECTORY" -armw=<< parameters.analysis_result_max_wait >> -arpi=<< parameters.analysis_result_polling_interval >> -buri=<< parameters.base_uri >> -scp="$PA_SOURCE_CODE_PATH" -pn=<< parameters.project_name >> -ch="$PA_COMMIT_HASH" -bn="$PA_BRANCH_NAME" -bruri=<< parameters.branch_uri >> -bldver=<< parameters.build_version >> -blduri="$PA_BUILD_URI" -oe=<< parameters.operating_environment >> -intn="$PA_INTEGRATION_NAME"
+
+        name: Execute PackageAware CLI
+
+
+#
+# The Workflow is the example of how a user would integrate with the PA ORB
+#
+examples:
+#  workflows:
+ #   main:
+  #    jobs:
+        # - packageaware-orb/init
+
+  async-workflow-common:
+    # In this workflow, we run a standard/common asynchronous scan. It will execute
+    # the "packageaware/analysis_async_init" job first, which initiates the scanning process at PackageAware.
+    # You are free to add additional jobs after the "packageaware/analysis_async_init" step.
+    # You must terminate the workflow with a call to "packageaware/analysis_async_result" if the result is important
+    # to you and you wish to have your build impacted by the presence of analysis result failures.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_async_init:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+            # RUN YOUR OTHER JOBS HERE
+
+            - packageaware/analysis_async_result:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+                requires:
+                 - packageaware/analysis_async_init
+
+  run-and-wait-workflow-common:
+    # In this worfklow, we run a standard/common synnchronous scan. It will start and fully complete (or time-out)
+    # before control is given to addition steps in the workflow.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+  async-workflow-initiate-only:
+    # In this workflow, we run a asynchronous scan and we do not wait for the analysis result.
+    # PackageAware will run the analysis as a result of this workflow, but the result will not impact your workflow
+    # in any way as the workflow will not wait for the result.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_async_init:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+  run-and-wait-workflow-exclude-files-and-directories:
+    # In this workflow, we inform the ORB that specific directories (and therefore subdirectories of those directories)
+    # as well as specific individual files should be avoided/ignored when the ORB finds dependency files that match
+    # the given criteria. When dependency files are ignored, they are not sent to the PackageAware service and
+    # are therefore not scanned by the PackageAware service.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # Completely exclude sub_folder/ and sub_folder_2/ and their contents.
+                directories_to_exclude: "sub_folder/,sub_folder_2/"
+                # Specifically exclude files:
+                #   sub_folder_3/file_1.py
+                #   sub_folder_3/file_2.py
+                #   sub_folder_4/file_1.py
+                files_to_exclude: "sub_folder_3/file_1.py,sub_folder_3/file_2.py,sub_folder_4/file_1.py"
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+
+  run-and-wait-workflow-long-processing-times:
+    # In this workflow, we increase the ORB "max wait time" in order to make a best effort to avoid timing out.
+    # The default timeout is 300 seconds, but in certain circumstances the default is not large enough:
+    #        If you have an exceedingly large number of dependency files for PackageAware to process.
+    # and/or If you have dependency files with an exceedingly long list of dependencies
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # The analysis_result_max_wait controls how long the process will wait for an analysis result before
+                # it quits (in seconds.) 1200 seconds, below, is an arbitrarily large number. Please tune to your
+                # system's needs.
+                analysis_result_max_wait: 1200  # default is 300 seconds
+
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+
+  run-and-wait-workflow-continue-on-failure:
+    # In this workflow, we inform the ORB that runtime failures or analysis result failures should be ignored
+    # and the build process should continue in the event that an error is encountered.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                on_failure: "continue_on_failure"
+
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
