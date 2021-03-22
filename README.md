@@ -14,30 +14,137 @@ orbs:
 #
 # The Workflow is the example of how a user would integrate with the PA ORB
 #
-workflows:
-  main:
-    jobs:
+#
+# The Workflow is the example of how a user would integrate with the PA ORB
+#
+examples:
+#  workflows:
+ #   main:
+  #    jobs:
+        # - packageaware-orb/init
 
-      - packageaware/analysis_async_init:
-          on_failure: "fail_the_build"
-          directories_to_exclude: ""
-          files_to_exclude: ""
-          working_directory: $CIRCLE_WORKING_DIRECTORY
-          analysis_result_max_wait: 300
-          analysis_result_polling_interval: 10
-          fs_debug: true
+  async-workflow-common:
+    # In this workflow, we run a standard/common asynchronous scan. It will execute
+    # the "packageaware/analysis_async_init" job first, which initiates the scanning process at PackageAware.
+    # You are free to add additional jobs after the "packageaware/analysis_async_init" step.
+    # You must terminate the workflow with a call to "packageaware/analysis_async_result" if the result is important
+    # to you and you wish to have your build impacted by the presence of analysis result failures.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_async_init:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
 
-      - packageaware/analysis_async_result:
-          on_failure: "fail_the_build"
-          directories_to_exclude: ""
-          files_to_exclude: ""
-          working_directory: $CIRCLE_WORKING_DIRECTORY
-          analysis_result_max_wait: 300
-          analysis_result_polling_interval: 1
-          fs_debug: true
+            # RUN YOUR OTHER JOBS HERE
 
-          requires:
-           - packageaware/analysis_async_init
+            - packageaware/analysis_async_result:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+                requires:
+                 - packageaware/analysis_async_init
+
+  run-and-wait-workflow-common:
+    # In this worfklow, we run a standard/common synnchronous scan. It will start and fully complete (or time-out)
+    # before control is given to addition steps in the workflow.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+  async-workflow-initiate-only:
+    # In this workflow, we run a asynchronous scan and we do not wait for the analysis result.
+    # PackageAware will run the analysis as a result of this workflow, but the result will not impact your workflow
+    # in any way as the workflow will not wait for the result.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_async_init:
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+  run-and-wait-workflow-exclude-files-and-directories:
+    # In this workflow, we inform the ORB that specific directories (and therefore subdirectories of those directories)
+    # as well as specific individual files should be avoided/ignored when the ORB finds dependency files that match
+    # the given criteria. When dependency files are ignored, they are not sent to the PackageAware service and
+    # are therefore not scanned by the PackageAware service.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # Completely exclude sub_folder/ and sub_folder_2/ and their contents.
+                directories_to_exclude: "sub_folder/,sub_folder_2/"
+                # Specifically exclude files:
+                #   sub_folder_3/file_1.py
+                #   sub_folder_3/file_2.py
+                #   sub_folder_4/file_1.py
+                files_to_exclude: "sub_folder_3/file_1.py,sub_folder_3/file_2.py,sub_folder_4/file_1.py"
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+
+  run-and-wait-workflow-long-processing-times:
+    # In this workflow, we increase the ORB "max wait time" in order to make a best effort to avoid timing out.
+    # The default timeout is 300 seconds, but in certain circumstances the default is not large enough:
+    #        If you have an exceedingly large number of dependency files for PackageAware to process.
+    # and/or If you have dependency files with an exceedingly long list of dependencies
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                # The analysis_result_max_wait controls how long the process will wait for an analysis result before
+                # it quits (in seconds.) 1200 seconds, below, is an arbitrarily large number. Please tune to your
+                # system's needs.
+                analysis_result_max_wait: 1200  # default is 300 seconds
+
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
+
+  run-and-wait-workflow-continue-on-failure:
+    # In this workflow, we inform the ORB that runtime failures or analysis result failures should be ignored
+    # and the build process should continue in the event that an error is encountered.
+    usage:
+      version: 2.1
+      workflows:
+        main:
+          jobs:
+            - packageaware/analysis_run_and_wait:
+                on_failure: "continue_on_failure"
+
+                # Turn off debugging (set to false) once you're comfortable with using the orb and no longer need the additional detail
+                fs_debug: true
+
+                # Change the project name to something specific to your project
+                project_name: "My-Project-Name"
+
         
 ```
 
