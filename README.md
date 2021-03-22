@@ -148,7 +148,6 @@ examples:
         
 ```
 
-The Package Aware Action has properties which are passed to the action using `with`.
 
 | Property | Default | Description |
 | --- | --- | --- |
@@ -164,7 +163,7 @@ The Package Aware Action has properties which are passed to the action using `wi
 | build_version | "" | Build version of the referenced repository
 | operating_environment | "" | Operating system details of the CI Build System
 
-The Package Aware Action has environment variables which are passed to the action using `env`. These environment variables are stored as project `environment variables` and are required for the action to operate.
+The Package Aware Orb has environment variables which are required:
 
 | Property | Description |
 | --- | --- |
